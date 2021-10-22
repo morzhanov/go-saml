@@ -3,9 +3,10 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	Key  string
-	Cert string
-	Port string
+	BaseURL string `mapstructure:"BASE_URL"`
+	Key     string `mapstructure:"KEY"`
+	Cert    string `mapstructure:"CERT"`
+	PSQLurl string `mapstructure:"PSQL_URL"`
 }
 
 func NewConfig() (config *Config, err error) {

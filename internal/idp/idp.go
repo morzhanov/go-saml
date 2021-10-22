@@ -1,59 +1,45 @@
-package apigw
+package idp
 
 import (
-	"flag"
-	"net/http"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 	"net/url"
 
 	"github.com/crewjam/saml/logger"
 	"github.com/crewjam/saml/samlidp"
-	"github.com/gin-gonic/gin"
 	"github.com/zenazn/goji"
-	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type idp struct {
-	log *zap.Logger
+	log     logger.Interface
+	store   samlidp.Store
+	baseURL string
+	cert    *x509.Certificate
+	key     *rsa.PrivateKey
 }
 
 type IDP interface {
-	Listen(port string) error
+	Listen() error
 }
 
-func (c *idp) handleHttpErr(ctx *gin.Context, err error) {
-	ctx.String(http.StatusInternalServerError, err.Error())
-	c.log.Info("error in the REST handler", zap.Error(err))
-}
-
-func (c *idp) handle(ctx *gin.Context) {
-	ctx.JSON(http.StatusCreated, res)
-}
-
-func (c *idp) Listen(port string) error {
-	//
-	//
-	//
-
-	// TODO: refactor and destructurize
-	logr := logger.DefaultLogger
-	baseURLstr := flag.String("idp", "", "The URL to the IDP")
-	flag.Parse()
-
-	baseURL, err := url.Parse(*baseURLstr)
+func (i *idp) Listen() error {
+	baseURL, err := url.Parse(i.baseURL)
 	if err != nil {
-		logr.Fatalf("cannot parse base URL: %v", err)
+		return fmt.Errorf("cannot parse base URL: %v", err)
 	}
 
 	idpServer, err := samlidp.New(samlidp.Options{
 		URL:         *baseURL,
-		Key:         key,
-		Logger:      logr,
-		Certificate: cert,
-		Store:       &samlidp.MemoryStore{},
+		Key:         i.key,
+		Logger:      i.log,
+		Certificate: i.cert,
+		Store:       i.store,
 	})
 	if err != nil {
-		logr.Fatalf("%s", err)
+		i.log.Fatalf("%s", err)
 	}
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("hunter2"), bcrypt.DefaultCost)
@@ -66,7 +52,7 @@ func (c *idp) Listen(port string) error {
 		GivenName:      "Alice",
 	})
 	if err != nil {
-		logr.Fatalf("%s", err)
+		i.log.Fatalf("%s", err)
 	}
 
 	err = idpServer.Store.Put("/users/bob", samlidp.User{
@@ -79,22 +65,25 @@ func (c *idp) Listen(port string) error {
 		GivenName:      "Bob",
 	})
 	if err != nil {
-		logr.Fatalf("%s", err)
+		i.log.Fatalf("%s", err)
 	}
 
 	goji.Handle("/*", idpServer)
 	goji.Serve()
-
-	//
-	//
-	//
-	//
-
-	r := gin.Default()
-	r.POST("/", c.handle)
-	return r.Run(port)
+	return nil
 }
 
-func NewServer(log *zap.Logger) IDP {
-	return &idp{log}
+func NewServer(log logger.Interface, store samlidp.Store, baseURL string, key string, cert string) (IDP, error) {
+	b, _ := pem.Decode([]byte(key))
+	k, err := x509.ParsePKCS1PrivateKey(b.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	b, _ = pem.Decode([]byte(cert))
+	if err != nil {
+		return nil, err
+	}
+	c, _ := x509.ParseCertificate(b.Bytes)
+
+	return &idp{log, store, baseURL, c, k}, nil
 }

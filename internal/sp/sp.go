@@ -1,16 +1,16 @@
-package apigw
+package sp
 
 import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"net/url"
 
 	"github.com/crewjam/saml/samlsp"
 
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -19,31 +19,21 @@ type sp struct {
 }
 
 type SP interface {
-	Listen(port string) error
+	Listen() error
 }
 
-func (c *sp) handleHttpErr(ctx *gin.Context, err error) {
-	ctx.String(http.StatusInternalServerError, err.Error())
-	c.log.Info("error in the REST handler", zap.Error(err))
+func hello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello, %s!", samlsp.AttributeFromContext(r.Context(), "cn"))
 }
 
-func (c *sp) handle(ctx *gin.Context) {
-	ctx.JSON(http.StatusCreated, res)
-}
-
-func (c *sp) Listen(port string) error {
-	//
-	//
-	//
-
-	// TODO: refactor and destructurize
+func (c *sp) Listen() error {
 	keyPair, err := tls.LoadX509KeyPair("myservice.cert", "myservice.key")
 	if err != nil {
-		panic(err) // TODO handle error
+		return err
 	}
 	keyPair.Leaf, err = x509.ParseCertificate(keyPair.Certificate[0])
 	if err != nil {
-		panic(err) // TODO handle error
+		return err
 	}
 
 	rootURL, _ := url.Parse("http://localhost:8000")
@@ -54,7 +44,7 @@ func (c *sp) Listen(port string) error {
 		http.DefaultClient,
 		*idpMetadataURL)
 	if err != nil {
-		panic(err) // TODO handle error
+		return err
 	}
 
 	samlSP, err := samlsp.New(samlsp.Options{
@@ -65,21 +55,13 @@ func (c *sp) Listen(port string) error {
 		SignRequest: true,
 	})
 	if err != nil {
-		panic(err) // TODO handle error
+		return err
 	}
 
 	app := http.HandlerFunc(hello)
 	http.Handle("/hello", samlSP.RequireAccount(app))
 	http.Handle("/saml/", samlSP)
-	http.ListenAndServe(":8000", nil)
-
-	//
-	//
-	//
-
-	r := gin.Default()
-	r.POST("/", c.handle)
-	return r.Run(port)
+	return http.ListenAndServe(":8000", nil)
 }
 
 func NewClient(log *zap.Logger) SP {

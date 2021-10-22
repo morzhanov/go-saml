@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	lgr "github.com/crewjam/saml/logger"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -44,4 +46,22 @@ func NewLogger() (*zap.Logger, error) {
 		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zap.InfoLevel),
 	)
 	return zap.New(core), nil
+}
+
+type idpLogger struct {
+	log *zap.Logger
+}
+
+func (l *idpLogger) Printf(format string, v ...interface{}) { l.log.Printf(format, v) }
+func (l *idpLogger) Print(v ...interface{})                 { l.log.Print(v) }
+func (l *idpLogger) Println(v ...interface{})               { l.log.Println(v) }
+func (l *idpLogger) Fatal(v ...interface{})                 { l.log.Fatal(v) }
+func (l *idpLogger) Fatalf(format string, v ...interface{}) { l.log.Fatalf(format, v) }
+func (l *idpLogger) Fatalln(v ...interface{})               { l.log.Fatalln(v) }
+func (l *idpLogger) Panic(v ...interface{})                 { l.log.Panic(v) }
+func (l *idpLogger) Panicf(format string, v ...interface{}) { l.log.Panicf(format, v) }
+func (l *idpLogger) Panicln(v ...interface{})               { l.log.Panicln(v) }
+
+func NewIDPLogger(log *zap.Logger) lgr.Interface {
+	return &idpLogger{log}
 }
